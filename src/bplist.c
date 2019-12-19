@@ -47,7 +47,9 @@
 #define BPLIST_VERSION          ((uint8_t*)"00")
 #define BPLIST_VERSION_SIZE     2
 
-typedef struct __attribute__((packed)) {
+#pragma pack(push)
+#pragma pack(1)
+typedef struct {
     uint8_t unused[6];
     uint8_t offset_size;
     uint8_t ref_size;
@@ -55,6 +57,7 @@ typedef struct __attribute__((packed)) {
     uint64_t root_object_index;
     uint64_t offset_table_offset;
 } bplist_trailer_t;
+#pragma pack(pop)
 
 enum
 {
@@ -84,15 +87,6 @@ union plist_uint_ptr
     uint32_t *u32ptr;
     uint64_t *u64ptr;
 };
-
-#define get_unaligned(ptr)			  \
-  ({                                              \
-    struct __attribute__((packed)) {		  \
-      typeof(*(ptr)) __v;			  \
-    } *__p = (void *) (ptr);			  \
-    __p->__v;					  \
-  })
-
 
 #ifndef bswap16
 #define bswap16(x)   ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
@@ -146,17 +140,41 @@ union plist_uint_ptr
 #define beNtoh(x,n) be64toh(x << ((8-n) << 3))
 #endif
 
+ static uint32_t uint32_toh(const void* p)
+ {
+  uint32_t x = *(uint32_t*)p;
+  return (((x & 0xFF000000) >> 24)
+     | ((x & 0x00FF0000) >> 8)
+     | ((x & 0x0000FF00) << 8)
+     | ((x & 0x000000FF) << 24));
+  }
+
+static uint64_t uint64_toh(const void* p)
+ {
+  uint64_t x = *(uint64_t*)p;
+  return (((x & 0xFF00000000000000ull) >> 56)
+     | ((x & 0x00FF000000000000ull) >> 40)
+     | ((x & 0x0000FF0000000000ull) >> 24)
+     | ((x & 0x000000FF00000000ull) >> 8)
+     | ((x & 0x00000000FF000000ull) << 8)
+     | ((x & 0x0000000000FF0000ull) << 24)
+     | ((x & 0x000000000000FF00ull) << 40)
+     | ((x & 0x00000000000000FFull) << 56));
+  }
+static uint16_t uint16_toh(const void* p)
+{
+  uint16_t x = *(uint16_t*)p;
+  return (((x & 0xFF00) >> 8) | ((x & 0x00FF) << 8));
+}
+
 #define UINT_TO_HOST(x, n) \
-	({ \
-		union plist_uint_ptr __up; \
-		__up.src = (n > 8) ? x + (n - 8) : x; \
-		(n >= 8 ? be64toh( get_unaligned(__up.u64ptr) ) : \
-		(n == 4 ? be32toh( get_unaligned(__up.u32ptr) ) : \
-		(n == 2 ? be16toh( get_unaligned(__up.u16ptr) ) : \
-                (n == 1 ? *__up.u8ptr : \
-		beNtoh( get_unaligned(__up.u64ptr), n) \
-		)))); \
-	})
+		(n == 8 ? uint64_toh(x) : \
+		(n == 4 ? uint32_toh(x) : \
+		(n == 2 ? uint32_toh(x) : \
+		*(uint8_t*)x)));
+
+#define be64dec(x) uint64_toh(x);
+
 
 #define get_needed_bytes(x) \
 		( ((uint64_t)x) < (1ULL << 8) ? 1 : \
@@ -166,16 +184,8 @@ union plist_uint_ptr
 
 #define get_real_bytes(x) (x == (float) x ? sizeof(float) : sizeof(double))
 
-#if (defined(__LITTLE_ENDIAN__) \
-     && !defined(__FLOAT_WORD_ORDER__)) \
- || (defined(__FLOAT_WORD_ORDER__) \
-     && __FLOAT_WORD_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 #define float_bswap64(x) bswap64(x)
 #define float_bswap32(x) bswap32(x)
-#else
-#define float_bswap64(x) (x)
-#define float_bswap32(x) (x)
-#endif
 
 #ifndef __has_builtin
 #define __has_builtin(x) 0
@@ -268,11 +278,11 @@ static plist_t parse_real_node(const char **bnode, uint8_t size)
     switch (size)
     {
     case sizeof(uint32_t):
-        *(uint32_t*)buf = float_bswap32(get_unaligned((uint32_t*)*bnode));
+        *(uint32_t*)buf = UINT_TO_HOST(*bnode, 4);
         data->realval = *(float *) buf;
         break;
     case sizeof(uint64_t):
-        *(uint64_t*)buf = float_bswap64(get_unaligned((uint64_t*)*bnode));
+        *(uint64_t*)buf = UINT_TO_HOST(*bnode, 8);
         data->realval = *(double *) buf;
         break;
     default:
@@ -332,7 +342,7 @@ static char *plist_utf16be_to_utf8(uint16_t *unistr, long len, long *items_read,
 	}
 
 	while (i < len) {
-		wc = be16toh(get_unaligned(unistr + i));
+		wc = uint16_toh(unistr + i);
 		i++;
 		if (wc >= 0xD800 && wc <= 0xDBFF) {
 			if (!read_lead_surrogate) {

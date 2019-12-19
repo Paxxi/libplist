@@ -52,7 +52,11 @@ public :
     const_iterator Find(const std::string& key) const;
     iterator Set(const std::string& key, const Node* node);
     iterator Set(const std::string& key, const Node& node);
-    iterator Insert(const std::string& key, Node* node) PLIST_WARN_DEPRECATED("use Set() instead");
+#ifdef _MSC_VER
+    PLIST_WARN_DEPRECATED("use Set() instead") iterator Insert(const std::string& key, Node* node);
+#else
+     iterator Insert(const std::string& key, Node* node) PLIST_WARN_DEPRECATED("use Set() instead");
+#endif
     void Remove(Node* node);
     void Remove(const std::string& key);
     std::string GetNodeKey(Node* key);

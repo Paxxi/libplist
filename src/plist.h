@@ -30,9 +30,9 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 
 #ifdef _MSC_VER
+#include <WinSock2.h>
 #pragma warning(disable:4996)
 #pragma warning(disable:4244)
 #endif
